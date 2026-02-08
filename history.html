@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}이력 - 로또 분석{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h1>📋 입력 이력</h1>
+    <p>등록된 모든 회차와 예측 데이터를 조회합니다</p>
+</div>
+
+{% if not rounds %}
+<div class="empty-state">
+    <i class="fas fa-inbox"></i>
+    <h3>등록된 회차가 없습니다</h3>
+    <p><a href="/input" style="color:var(--accent-gold)">입력 페이지</a>에서 데이터를 추가하세요</p>
+</div>
+{% else %}
+<div class="card">
+    <div class="table-wrap">
+        <table>
+            <thead>
+                <tr>
+                    <th>회차</th>
+                    <th>추첨일</th>
+                    <th>당첨 번호</th>
+                    <th>등록된 코드</th>
+                    <th>작업</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in rounds %}
+                <tr id="row-{{ r.round_number }}">
+                    <td><strong style="font-family:'JetBrains Mono'">{{ r.round_number }}</strong>회</td>
+                    <td style="color:var(--text-muted);font-size:0.85rem">{{ r.draw_date or '-' }}</td>
+                    <td>
+                        {% for i in range(1,7) %}
+                        {% set n = r['num' ~ i] %}
+                        <span class="lotto-ball {% if n <= 10 %}z1{% elif n <= 20 %}z2{% elif n <= 30 %}z3{% elif n <= 40 %}z4{% else %}z5{% endif %}" style="width:28px;height:28px;font-size:0.72rem">{{ n }}</span>
+                        {% endfor %}
+                    </td>
+                    <td id="codes-{{ r.round_number }}">
+                        <span style="color:var(--text-muted);font-size:0.82rem">로딩...</span>
+                    </td>
+                    <td>
+                        <div style="display:flex;gap:0.4rem">
+                            <a href="/round/{{ r.round_number }}" class="btn btn-outline btn-sm">
+                                <i class="fas fa-chart-bar"></i> 분석
+                            </a>
+                            <form action="/round/{{ r.round_number }}/delete" method="POST"
+                                  onsubmit="return confirm('{{ r.round_number }}회차를 삭제하시겠습니까?')">
+                                <button type="submit" class="btn btn-danger btn-sm">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CODES = {
+    {% for cid, c in codes.items() %}
+    '{{ cid }}': {short:'{{ c.short }}', color:'{{ c.color }}'},
+    {% endfor %}
+};
+
+// 각 회차의 등록 상태 조회
+document.querySelectorAll('[id^="codes-"]').forEach(async el => {
+    const rn = el.id.replace('codes-', '');
+    try {
+        const res = await fetch(`/api/round/${rn}/status`);
+        const data = await res.json();
+        if (!data.exists) return;
+        let html = '';
+        for (const [cid, info] of Object.entries(CODES)) {
+            const s = data.codes[cid];
+            if (s && s.entered) {
+                html += `<span style="display:inline-block;padding:2px 6px;border-radius:4px;font-size:0.7rem;font-family:'JetBrains Mono';font-weight:600;background:${info.color}20;color:${info.color};border:1px solid ${info.color}40;margin:1px">${info.short}</span>`;
+            }
+        }
+        el.innerHTML = html || '<span style="color:var(--text-muted);font-size:0.8rem">미입력</span>';
+    } catch(e) {}
+});
+</script>
+{% endblock %}
