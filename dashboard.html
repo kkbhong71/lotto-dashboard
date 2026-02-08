@@ -1,0 +1,275 @@
+{% extends "base.html" %}
+{% block title %}대시보드 - 로또 분석{% endblock %}
+
+{% block content %}
+<div class="page-header">
+    <h1>📊 예측 성능 대시보드</h1>
+    <p>7개 알고리즘의 누적 성적을 실시간 추적합니다</p>
+</div>
+
+{% if data.total_rounds == 0 %}
+<div class="empty-state">
+    <i class="fas fa-database"></i>
+    <h3>아직 데이터가 없습니다</h3>
+    <p>먼저 <a href="/input" style="color:var(--accent-gold)">입력 페이지</a>에서 회차 데이터를 등록하세요</p>
+</div>
+{% else %}
+
+<!-- 요약 통계 카드 -->
+<div class="grid-4" style="margin-bottom:1.5rem">
+    <div class="card">
+        <div class="card-title"><i class="fas fa-calendar"></i> 총 회차</div>
+        <div class="stat-value">{{ data.total_rounds }}</div>
+        <div class="stat-label">등록된 추첨 회차</div>
+    </div>
+    <div class="card">
+        <div class="card-title"><i class="fas fa-trophy"></i> 최고 성적</div>
+        {% if data.code_rankings %}
+        <div class="stat-value" style="color:{{ data.code_rankings[0].color }}">
+            {{ data.code_rankings[0].short }}
+        </div>
+        <div class="stat-label">{{ data.code_rankings[0].name }} (평균 {{ data.code_rankings[0].avg_max_match }}개)</div>
+        {% else %}
+        <div class="stat-value">-</div>
+        {% endif %}
+    </div>
+    <div class="card">
+        <div class="card-title"><i class="fas fa-bullseye"></i> 최다 3+일치</div>
+        {% set best3 = data.code_rankings|sort(attribute='pct_3plus', reverse=True)|first if data.code_rankings else None %}
+        {% if best3 %}
+        <div class="stat-value">{{ best3.pct_3plus }}%</div>
+        <div class="stat-label">{{ best3.name }}</div>
+        {% else %}
+        <div class="stat-value">-</div>
+        {% endif %}
+    </div>
+    <div class="card">
+        <div class="card-title"><i class="fas fa-star"></i> 4+일치 횟수</div>
+        {% set total4 = data.code_rankings|sum(attribute='match_4plus') if data.code_rankings else 0 %}
+        <div class="stat-value">{{ total4 }}</div>
+        <div class="stat-label">전체 코드 합산</div>
+    </div>
+</div>
+
+<!-- 랭킹 테이블 + 성과 그래프 -->
+<div class="grid-2" style="margin-bottom:1.5rem">
+    <!-- 랭킹 테이블 -->
+    <div class="card">
+        <div class="card-title"><i class="fas fa-medal"></i> 코드별 누적 랭킹</div>
+        <div class="table-wrap">
+            <table>
+                <thead>
+                    <tr>
+                        <th>#</th>
+                        <th>코드</th>
+                        <th>회차</th>
+                        <th>평균최대</th>
+                        <th>3+일치</th>
+                        <th>4+</th>
+                        <th>vs 랜덤</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for r in data.code_rankings %}
+                    <tr>
+                        <td>
+                            <span class="rank-badge {% if r.rank==1 %}rank-1{% elif r.rank==2 %}rank-2{% elif r.rank==3 %}rank-3{% else %}rank-other{% endif %}">
+                                {{ r.rank }}
+                            </span>
+                        </td>
+                        <td>
+                            <span class="code-dot" style="background:{{ r.color }}"></span>
+                            <strong>{{ r.short }}</strong>
+                            <span style="color:var(--text-muted);font-size:0.78rem;margin-left:4px">{{ r.name }}</span>
+                        </td>
+                        <td style="font-family:'JetBrains Mono';font-size:0.85rem">{{ r.rounds }}</td>
+                        <td>
+                            <span style="font-family:'JetBrains Mono';font-weight:700;font-size:1.05rem;color:{{ r.color }}">
+                                {{ r.avg_max_match }}
+                            </span>
+                        </td>
+                        <td style="font-family:'JetBrains Mono';font-size:0.85rem">{{ r.pct_3plus }}%</td>
+                        <td style="font-family:'JetBrains Mono';font-size:0.85rem">{{ r.match_4plus }}</td>
+                        <td>
+                            <span class="stat-change {% if r.vs_random > 0 %}positive{% else %}negative{% endif %}">
+                                {{ '+' if r.vs_random > 0 }}{{ r.vs_random }}%
+                            </span>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- 랜덤 대비 성과 그래프 -->
+    <div class="card">
+        <div class="card-title"><i class="fas fa-chart-line"></i> 최대일치 추이 (vs 랜덤)</div>
+        <canvas id="performanceChart" style="max-height:350px"></canvas>
+    </div>
+</div>
+
+<!-- 번호 대역별 히트맵 -->
+<div class="card" style="margin-bottom:1.5rem">
+    <div class="card-title"><i class="fas fa-th"></i> 번호 대역별 예측 분포 히트맵</div>
+    <canvas id="heatmapChart" style="max-height:320px"></canvas>
+</div>
+
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+{% if data.total_rounds > 0 %}
+<script>
+const dashData = {{ data_json|safe }};
+const CODES = {
+    {% for cid, c in codes.items() %}
+    '{{ cid }}': {name:'{{ c.name }}', color:'{{ c.color }}', short:'{{ c.short }}', sets:{{ c.sets }}},
+    {% endfor %}
+};
+
+// ── 성과 추이 라인 차트 ──
+(function() {
+    const ctx = document.getElementById('performanceChart');
+    if (!ctx) return;
+
+    const datasets = [];
+
+    // 코드별 라인
+    for (const [cid, info] of Object.entries(CODES)) {
+        const series = dashData.performance_series[cid];
+        if (!series || series.every(v => v === null)) continue;
+        datasets.push({
+            label: info.short,
+            data: series,
+            borderColor: info.color,
+            backgroundColor: info.color + '20',
+            borderWidth: 2,
+            pointRadius: series.length > 20 ? 0 : 3,
+            pointHoverRadius: 5,
+            tension: 0.3,
+            spanGaps: true,
+        });
+    }
+
+    // 랜덤 5세트 기준선
+    if (dashData.random_series.rand5_avg) {
+        datasets.push({
+            label: '랜덤5',
+            data: dashData.random_series.rand5_avg,
+            borderColor: '#4b5563',
+            borderDash: [6, 4],
+            borderWidth: 1.5,
+            pointRadius: 0,
+            tension: 0.3,
+            spanGaps: true,
+        });
+    }
+
+    new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: dashData.round_labels,
+            datasets: datasets,
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                legend: {
+                    labels: { color: '#8896b0', font: { family: "'JetBrains Mono'" , size: 11 } }
+                },
+                tooltip: {
+                    backgroundColor: '#1a2236',
+                    borderColor: '#2a3654',
+                    borderWidth: 1,
+                    titleFont: { family: "'JetBrains Mono'" },
+                    bodyFont: { family: "'JetBrains Mono'", size: 12 },
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#5a6a85', font: { family: "'JetBrains Mono'", size: 10 }, maxRotation: 45 },
+                    grid: { color: '#1a2236' },
+                },
+                y: {
+                    min: 0,
+                    max: 6,
+                    ticks: {
+                        color: '#5a6a85',
+                        font: { family: "'JetBrains Mono'", size: 11 },
+                        stepSize: 1,
+                        callback: v => v + '개',
+                    },
+                    grid: { color: '#1f2a42' },
+                }
+            }
+        }
+    });
+})();
+
+// ── 번호 대역 히트맵 (가로 바 그룹) ──
+(function() {
+    const ctx = document.getElementById('heatmapChart');
+    if (!ctx) return;
+
+    const zones = ['1~10', '11~20', '21~30', '31~40', '41~45'];
+    const datasets = [];
+
+    for (const [cid, info] of Object.entries(CODES)) {
+        const zoneData = dashData.zone_heatmap[cid];
+        if (!zoneData) continue;
+        const hasData = Object.values(zoneData).some(v => v > 0);
+        if (!hasData) continue;
+        datasets.push({
+            label: info.short,
+            data: zones.map(z => zoneData[z] || 0),
+            backgroundColor: info.color + 'CC',
+            borderColor: info.color,
+            borderWidth: 1,
+            borderRadius: 4,
+        });
+    }
+
+    // 이론적 균등 분포
+    const idealDist = [22.2, 22.2, 22.2, 22.2, 11.1]; // 10+10+10+10+5 out of 45
+    datasets.push({
+        label: '이론분포',
+        data: idealDist,
+        backgroundColor: '#4b556340',
+        borderColor: '#4b5563',
+        borderWidth: 1,
+        borderDash: [4, 4],
+        borderRadius: 4,
+    });
+
+    new Chart(ctx, {
+        type: 'bar',
+        data: { labels: zones, datasets: datasets },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { labels: { color: '#8896b0', font: { family: "'JetBrains Mono'", size: 11 } } },
+                tooltip: {
+                    backgroundColor: '#1a2236',
+                    callbacks: { label: item => `${item.dataset.label}: ${item.raw}%` }
+                }
+            },
+            scales: {
+                x: {
+                    ticks: { color: '#8896b0', font: { family: "'JetBrains Mono'", size: 12 } },
+                    grid: { display: false },
+                },
+                y: {
+                    ticks: { color: '#5a6a85', font: { family: "'JetBrains Mono'" }, callback: v => v + '%' },
+                    grid: { color: '#1f2a42' },
+                }
+            }
+        }
+    });
+})();
+</script>
+{% endif %}
+{% endblock %}
