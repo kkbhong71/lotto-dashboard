@@ -19,12 +19,12 @@ DB_PATH = os.environ.get('DATABASE_PATH',
 # 코드 정보 (7개 코드)
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CODES = {
-    '2601': {'name': 'Ultimate v6.0', 'sets': 5,  'color': '#EF4444', 'short': 'ULT'},
-    '2602': {'name': 'Quantum v4.0',  'sets': 5,  'color': '#3B82F6', 'short': 'QTM'},
-    '2603': {'name': 'Momentum v5.0', 'sets': 5,  'color': '#10B981', 'short': 'MOM'},
-    '2604': {'name': 'Deep v5.0',     'sets': 5,  'color': '#8B5CF6', 'short': 'DEP'},
-    '2605': {'name': 'Hybrid v5.0',   'sets': 5,  'color': '#F59E0B', 'short': 'HYB'},
-    '2606': {'name': 'Platinum v5.1', 'sets': 5,  'color': '#EC4899', 'short': 'PLT'},
+    '2601': {'name': 'The strongest in the universe ver3.0', 'sets': 5,  'color': '#EF4444', 'short': 'ULT'},
+    '2602': {'name': 'Lotto-ultimate-v3.0',  'sets': 5,  'color': '#3B82F6', 'short': 'QTM'},
+    '2603': {'name': 'Lotto-ultimate-v1.5', 'sets': 5,  'color': '#10B981', 'short': 'MOM'},
+    '2604': {'name': 'Super v2.0 Feature Engineering',     'sets': 5,  'color': '#8B5CF6', 'short': 'DEP'},
+    '2605': {'name': 'The strongest in the universe v4.0',   'sets': 5,  'color': '#F59E0B', 'short': 'HYB'},
+    '2606': {'name': 'Platinum Lotto System v5.0', 'sets': 5,  'color': '#EC4899', 'short': 'PLT'},
     '2607': {'name': 'Brother v2.0',  'sets': 21, 'color': '#F97316', 'short': 'BRO'},
 }
 
